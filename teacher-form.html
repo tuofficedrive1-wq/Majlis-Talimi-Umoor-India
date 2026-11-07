@@ -712,10 +712,17 @@ const activePeriods = teacher.periods.filter(p => {
                                 updateDoc.changedValues.forEach(cv => {
                                     const pid = cv.periodId;
                                     if (!pid) return;
+                                    // Admin ka update sirf pages override karega. Ibarat/Page No. admin UI me edit nahi hote,
+                                    // isliye wo teacher ke apne submission/monthly_reports ka text hi rakhte hain.
+                                    // Admin doc me purana (pichle mahine ka) text ho sakta hai, is liye use sirf tab lein
+                                    // jab is period ka koi text pehle se na mila ho.
+                                    const hadTeacherText = !!periodData[pid];
                                     if (!periodData[pid]) periodData[pid] = { pages: 0, lastIbarat: '-', lastPageNo: '-' };
                                     if (cv.pagesTaught !== undefined && cv.pagesTaught !== null) periodData[pid].pages = parseInt(cv.pagesTaught, 10);
-                                    if (cv.lastIbarat !== undefined && cv.lastIbarat !== null) periodData[pid].lastIbarat = cv.lastIbarat;
-                                    if (cv.lastPageNo !== undefined && cv.lastPageNo !== null) periodData[pid].lastPageNo = cv.lastPageNo;
+                                    if (!hadTeacherText) {
+                                        if (cv.lastIbarat !== undefined && cv.lastIbarat !== null) periodData[pid].lastIbarat = cv.lastIbarat;
+                                        if (cv.lastPageNo !== undefined && cv.lastPageNo !== null) periodData[pid].lastPageNo = cv.lastPageNo;
+                                    }
                                 });
                             }
                         });
@@ -1035,22 +1042,37 @@ async function loadTeacherUserUpdates(jamiaId, teacherId, monthIndex, year) {
             // Fallback: agar period ID purani/badli hui ho to class + kitab ke naam se match karein
             // (structure restore ke baad IDs badal jati thi, aur submitted kitab khuli reh jati thi)
             const normBook = s => String(s || '').replace(/ي/g, 'ی').replace(/ك/g, 'ک').replace(/ۃ/g, 'ہ').replace(/\s+/g, '').toLowerCase();
-            const dataByName = {};
+            // Ek submission ek hi period ko milegi (ek hi kitab ke do periods dono ko same data na mile)
+            const allPeriodInputs = document.querySelectorAll('.pages-taught-input');
+            const assigned = new Map();
+            const usedSubs = new Set();
+            // Pehle ID se match (pakka match)
+            allPeriodInputs.forEach(input => {
+                const info = dataByPeriod[input.dataset.periodId];
+                if (info && !usedSubs.has(info)) { assigned.set(input, info); usedSubs.add(info); }
+            });
+            // Phir jo bache unhe class + kitab ke naam se match karein (sirf ek bar istemal hone wali submission)
+            const unusedByName = {};
             Object.values(dataByPeriod).forEach(d => {
+                if (usedSubs.has(d) || !d.className || !d.bookName) return;
                 const k = normBook(d.className) + '::' + normBook(d.bookName);
-                if (d.className && d.bookName && !dataByName[k]) dataByName[k] = d;
+                (unusedByName[k] ||= []).push(d);
+            });
+            allPeriodInputs.forEach(input => {
+                if (assigned.has(input)) return;
+                const k = normBook(input.dataset.className) + '::' + normBook(input.dataset.bookName);
+                const pool = unusedByName[k];
+                if (pool && pool.length) { const d = pool.shift(); assigned.set(input, d); usedSubs.add(d); }
             });
 
             // Ab har card ko check karein
-            const allPeriodInputs = document.querySelectorAll('.pages-taught-input');
             let totalPeriods = allPeriodInputs.length;
             let lockedCount = 0;
 
             allPeriodInputs.forEach(input => {
                 const periodId = input.dataset.periodId;
                 const rowId = input.dataset.rowId;
-                const nameKey = normBook(input.dataset.className) + '::' + normBook(input.dataset.bookName);
-                const info = dataByPeriod[periodId] || dataByName[nameKey];
+                const info = assigned.get(input);
 
                 const cardDiv = input.closest('div.bg-gray-50');
 
