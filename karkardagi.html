@@ -12,7 +12,7 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" integrity="sha512-9usAa10IRO0HhonpyAIVpjrylPvoDwiPUiKdWk5t3PyolY1cOd4DSE0Ga+ri4AuTroPR5aQvXU9xC6qOPnzFeg==" crossorigin="anonymous" referrerpolicy="no-referrer" />
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
  
     <style>
         /* Jameel Noori Nastaleeq font */
@@ -55,6 +55,16 @@
     input.urdu-font, textarea.urdu-font, select.urdu-font {
         font-family: 'Jameel Noori Nastaleeq', 'Poppins', sans-serif;
     }
+        /* ===== Progress loader (percent + step label) ===== */
+        .kk-loader{position:fixed;inset:0;z-index:70;display:flex;align-items:center;justify-content:center;background:rgba(240,242,245,.82)}
+        .kk-loader.hidden{display:none!important}
+        .kk-card{background:#fff;border:1px solid #e5e7eb;border-radius:14px;padding:18px 20px;width:min(340px,88vw);box-shadow:0 10px 30px rgba(0,0,0,.12)}
+        .kk-row{display:flex;align-items:center;gap:14px;margin-bottom:12px}
+        .kk-spin{width:30px!important;height:30px!important;border-width:4px!important;flex:none}
+        #kk-label{font-size:.9rem;font-weight:600;color:#1f2937;line-height:1.35}
+        #kk-pct{font-size:.8rem;color:#0d9488;font-weight:700;margin-top:2px}
+        .kk-bar{height:8px;background:#e5e7eb;border-radius:99px;overflow:hidden}
+        .kk-bar i{display:block;height:100%;width:3%;background:#14b8a6;border-radius:99px;transition:width .35s ease}
         .loader { border: 5px solid #f3f3f3; border-top: 5px solid #14b8a6; border-radius: 50%; width: 50px; height: 50px; animation: spin 1s linear infinite; }
         @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
         .tab-btn.active, .sub-tab-btn.active { border-color: #14b8a6; background-color: #14b8a6; color: white; }
@@ -499,9 +509,13 @@ html .add-period-form .pages-edit-btn{min-height:34px;height:34px}
             </div>
 </header>
 
-        <div id="loader" class="fixed top-0 left-0 w-full h-full bg-gray-900 bg-opacity-50 flex justify-center items-center z-[70] hidden">
-            <div class="loader"></div>
+        <div id="loader" class="kk-loader">
+            <div class="kk-card">
+                <div class="kk-row"><div class="loader kk-spin"></div><div><div id="kk-label">Karkardagi khul raha hai…</div><div id="kk-pct">0%</div></div></div>
+                <div class="kk-bar"><i id="kk-fill"></i></div>
+            </div>
         </div>
+        <script>try{if(window.parent!==window)window.parent.postMessage({t:'mtu-boot'},'*')}catch(_){}</script>
         
         <div id="login-view">
              <div class="max-w-md mx-auto bg-white p-6 md:p-8 rounded-xl shadow-lg text-center">
@@ -944,6 +958,9 @@ const urduMonths = {
         const auth = getAuth(app);
         const db = getFirestore(app);
         const storage = getStorage(app);
+        // Config + user doc ko jaldi se mangwa lo (auth ke saath parallel), phir loadUserData dobara nahi mangwayega
+        const __pre = { cfg: getDoc(doc(db, 'settings', 'academic_config')), user: null, uid: null };
+        __pre.cfg.catch(() => {});
 
         // --- DOM Elements ---
         const loader = document.getElementById('loader');
@@ -1025,6 +1042,8 @@ const urduMonths = {
         let teacherSubmissionsMap = new Map();
                 // 🔹 Cache key: kis month/year + academic year ka data last baar load hua
         let lastLoadedReportKey = null;
+        let __loadSeq = 0, __monthUiSeq = 0;
+        let __yearCacheKey = null;   // jis (user|year) ka saal-bhar ka data memory me hai
 
 
         // Current Period being viewed/edited
@@ -1046,7 +1065,31 @@ const urduMonths = {
         let currentJamiaFilter = 'all'; // 'all' or specific jamia name for Reporting tab
 
         // --- HELPER FUNCTIONS (Critical changes in getInitialReportingPeriod) ---
-        const showLoader = (show) => loader.classList.toggle('hidden', !show);
+        const KKP = (() => {
+            let pct = 0, timer = null, t0 = 0;
+            const L = document.getElementById('kk-label'), P = document.getElementById('kk-pct'), F = document.getElementById('kk-fill');
+            const paint = () => { F.style.width = pct + '%'; P.textContent = Math.round(pct) + '%'; };
+            const set = (p, label) => { if (p > pct) pct = Math.min(p, 99); if (label) L.textContent = label; paint(); };
+            const start = (label) => {
+                pct = 3; L.textContent = label || 'Load ho raha hai…'; paint();
+                clearInterval(timer); t0 = Date.now();
+                timer = setInterval(() => { pct += (92 - pct) * 0.06; paint(); if (Date.now() - t0 > 40000) L.textContent = 'Load hone me der lag rahi hai — internet check karein'; }, 200);
+            };
+            const stop = () => { clearInterval(timer); timer = null; pct = 100; paint(); };
+            return { start, set, stop };
+        })();
+        window.KKP = KKP;
+        let __loaderOn = !loader.classList.contains('hidden');
+        if (__loaderOn) KKP.start('Karkardagi khul raha hai…');
+        const showLoader = (show, label) => {
+            if (show) {
+                if (!__loaderOn) KKP.start(label); else if (label) KKP.set(0, label);
+                __loaderOn = true; loader.classList.remove('hidden');
+            } else if (__loaderOn) {
+                KKP.stop(); __loaderOn = false;
+                setTimeout(() => { if (!__loaderOn) loader.classList.add('hidden'); }, 180);
+            }
+        };
         
         const showNotification = (message, isError = false, errorDetail = null) => {
             let logMessage = message;
@@ -1248,12 +1291,18 @@ window.refreshSemesterLabels = () => {
                         if (oldPeriod.monthNum !== currentReportPeriod.monthNum || oldPeriod.yearNum !== currentReportPeriod.yearNum) {
                 if (currentUser && activeYear) {
                     // 🔹 Month/year change hua to fresh read chahiye
-                    loadMonthlyReportData(true).then(() => {
+                    const myUi = ++__monthUiSeq;
+                    const canLoad = !!allAcademicYearsData[activeYear];   // pehli baar (data aane se pehle) loader na chhedein
+                    if (canLoad) showLoader(true, `${displayMonth} ${currentReportPeriod.yearNum || currentReportPeriod.year} ka data load ho raha hai…`);
+                    loadMonthlyReportData(true, { monthOnly: true }).then((r) => {
+                        if (r === 'stale') return;
+                        KKP.set(92, 'Table ban rahi hai…');
                         renderReportingTab();
                         if (!document.getElementById('summary-tab-content').classList.contains('hidden')) {
                              renderSummaryTab();
                         }
-                    });
+                    }).catch(e => console.error('Month load error:', e))
+                      .finally(() => { if (canLoad && myUi === __monthUiSeq) showLoader(false); });
                 }
             }
         };
@@ -1499,7 +1548,7 @@ const handleCreateReportLink = (jamiaName) => {
     // 1. Function Define kiya
     async function loadAdminSettings(db) {
         const configRef = doc(db, "settings", "academic_config");
-        const snap = await getDoc(configRef);
+        const snap = await (__pre.cfg ? __pre.cfg.catch(() => getDoc(configRef)) : getDoc(configRef));
         if (snap.exists()) {
             adminAcademicConfig = snap.data();
             console.log("Admin Settings Loaded", adminAcademicConfig);
@@ -1884,7 +1933,9 @@ if (saveStructureBtn) {
                         let overrideTimestamp = null;
                         try {
                             const userDocRef = doc(db, 'users', activeUserId);
-                            const userDocSnap = await getDoc(userDocRef);
+                            __pre.user = getDoc(userDocRef); __pre.uid = activeUserId; __pre.user.catch(() => {});
+                            KKP.set(12, 'Login check ho gaya…');
+                            const userDocSnap = await __pre.user;
                             if (userDocSnap.exists()) {
                                 userProfileData = userDocSnap.data(); 
                                 overrideTimestamp = userProfileData.gracePeriodOverrideUntil || null;
@@ -1893,6 +1944,18 @@ if (saveStructureBtn) {
 
                         // SET INITIAL PERIOD
                         const initialPeriod = getInitialReportingPeriod(overrideTimestamp);
+                        KKP.set(25, 'Profile mil gayi…');
+                        // Dashboard ka month pehle se maloom hai: usi mahine se shuru karo (dobara reload na ho)
+                        try {
+                            if (document.documentElement.classList.contains('embedded') && window.top.Shell) {
+                                const sm = window.top.Shell.month();
+                                if (/^\d{4}-\d{2}$/.test(sm || '')) {
+                                    const [yy, mm] = sm.split('-').map(Number);
+                                    initialPeriod.yearNum = yy; initialPeriod.year = yy; initialPeriod.monthNum = mm - 1;
+                                    initialPeriod.month = getMonthName(mm - 1); initialPeriod.semester = determineSemester(mm - 1);
+                                }
+                            }
+                        } catch (_) {}
                             
                             // *** LOGIC TO SET ACADEMIC YEAR AND PERIOD ***
                             const { monthNum, yearNum } = initialPeriod;
@@ -2306,7 +2369,12 @@ if (editTeacherForm) {
     try {
         // 1. Admin ki Central Config ko hamesha pehle load karein
         const globalConfigRef = doc(db, "settings", "academic_config");
-        const globalSnap = await getDoc(globalConfigRef);
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const cfgP = (isInitialLoad && __pre.cfg) ? __pre.cfg.catch(() => getDoc(globalConfigRef)) : getDoc(globalConfigRef);
+        const usrP = (isInitialLoad && __pre.user && __pre.uid === currentUser.uid) ? __pre.user.catch(() => getDoc(userDocRef)) : getDoc(userDocRef);
+        __pre.cfg = null; __pre.user = null;
+        KKP.set(40, 'Settings aur profile…');
+        const [globalSnap, userDocSnap] = await Promise.all([cfgP, usrP]);
         
         let adminConfig = null;
         if (globalSnap.exists()) {
@@ -2318,8 +2386,6 @@ if (editTeacherForm) {
         }
 
         // 2. User Profile Data
-        const userDocRef = doc(db, 'users', currentUser.uid);
-        const userDocSnap = await getDoc(userDocRef);
         if (userDocSnap.exists()) {
             userProfileData = userDocSnap.data(); 
         }
@@ -2436,19 +2502,22 @@ if (editTeacherForm) {
         showLoader(false);
     }
 };
- const loadHistoricalSubmissions = async () => {
+ const fetchHistoricalSubmissionDocs = async () => {
+    if (!activeYear) return [];
+    const [sY, eY] = activeYear.split('-').map(Number);
+    const snaps = await Promise.all([sY, eY].map(y => getDocs(query(collection(db, 'teacher_submissions'), where('submissionYear', '==', y)))));
+    const out = [];
+    snaps.forEach(snap => snap.forEach(d => out.push(d.data())));
+    return out;
+};
+ const loadHistoricalSubmissions = async (preDocs) => {
     const map = new Map();
     window.allHistoricalSubmissionsMap = map;
     if (!activeYear) return;
 
-    const [sY, eY] = activeYear.split('-').map(Number);
     const tsMs = t => !t ? 0 : (typeof t.toMillis === 'function' ? t.toMillis()
                        : t.seconds ? t.seconds * 1000 : (new Date(t).getTime() || 0));
-    const docs = [];
-    for (const y of [sY, eY]) {
-        const snap = await getDocs(query(collection(db, 'teacher_submissions'), where('submissionYear', '==', y)));
-        snap.forEach(d => docs.push(d.data()));
-    }
+    const docs = preDocs || await fetchHistoricalSubmissionDocs();
 
     // Pehle teacher ka data, phir admin ka (admin ki edit hamesha jeete), purane se naya
     docs.sort((a, b) => {
@@ -2486,7 +2555,7 @@ if (editTeacherForm) {
     });
 };
 
- const loadMonthlyReportData = async (forceReload = false) => {
+ const loadMonthlyReportData = async (forceReload = false, opts = {}) => {
     if (!currentUser || !currentUser.uid) return;
     if (!activeYear || !allAcademicYearsData[activeYear]) return;
 
@@ -2497,25 +2566,38 @@ if (editTeacherForm) {
         return;
     }
 
-    monthlyReportData = [];
-    currentMonthReport = {};
-    allYearReportsData = [];
-    teacherSubmissionsMap = new Map();
+    const mySeq = ++__loadSeq;
+    const yearKey = `${currentUser.uid}|${activeYear}`;
+    // Month badalne par saal-bhar ka data (reports + historical) dobara mangwane ki zaroorat nahi
+    const monthOnly = !!opts.monthOnly && __yearCacheKey === yearKey;
 
     const currentStructure = allAcademicYearsData[activeYear].karkardagiStructure || [];
 
     try {
-        const reportsCollectionRef = collection(db, 'monthly_reports');
-        const q = query(
-            reportsCollectionRef,
+        KKP.set(20, 'Reports aur submissions mangwa rahe hain…');
+        const reportsP = monthOnly ? Promise.resolve(null) : getDocs(query(
+            collection(db, 'monthly_reports'),
             where('userId', '==', currentUser.uid),
             where('academicYear', '==', activeYear)
-        );
+        ));
+        const submissionsP = getDocs(query(
+            collection(db, 'teacher_submissions'),
+            where('submissionYear', '==', yearNum),
+            where('submissionMonth', '==', monthNum)
+        ));
+        const histP = monthOnly ? Promise.resolve(null) : fetchHistoricalSubmissionDocs();
+        const [querySnapshot, submissionsSnap, histDocs] = await Promise.all([reportsP, submissionsP, histP]);
+        if (mySeq !== __loadSeq) return 'stale';   // beech me naya month select ho gaya
+        KKP.set(80, 'Data process ho raha hai…');
 
-        const querySnapshot = await getDocs(q);
-        querySnapshot.forEach(docSnap => {
-            allYearReportsData.push(docSnap.data());
-        });
+        monthlyReportData = [];
+        currentMonthReport = {};
+        teacherSubmissionsMap = new Map();
+        if (!monthOnly) {
+            allYearReportsData = [];
+            querySnapshot.forEach(docSnap => { allYearReportsData.push(docSnap.data()); });
+            __yearCacheKey = null;
+        }
 
         const currentReport = allYearReportsData.find(
             report => report.year === yearNum && report.monthNum === monthNum
@@ -2527,14 +2609,6 @@ if (editTeacherForm) {
             // monthlyReportData retains authentic jamiaName as saved in the report document
         }
 
-        const submissionsRef = collection(db, 'teacher_submissions');
-        const submissionsQuery = query(
-            submissionsRef,
-            where('submissionYear', '==', yearNum),
-            where('submissionMonth', '==', monthNum)
-        );
-
-        const submissionsSnap = await getDocs(submissionsQuery);
         const updatedPeriodIds = new Set(); 
 
         submissionsSnap.forEach(docSnap => {
@@ -2721,7 +2795,7 @@ if (editTeacherForm) {
             }
         }
 
-        await loadHistoricalSubmissions();
+        if (!monthOnly) { await loadHistoricalSubmissions(histDocs); __yearCacheKey = yearKey; }
         lastLoadedReportKey = cacheKey;
         if (typeof window.renderSubmitStatusReport === 'function') {
             window.renderSubmitStatusReport();
@@ -4539,7 +4613,7 @@ if (daysThisMonth === 0) {
 
                     sortedPeriods
                         // Filter periods by the current report semester (string-safe for both "2" and 2)
-                        ?.filter(p => String(p.semester || '1') === String(currentSemester)) 
+                        ?.filter(p => String(p.semester || '1') === String(currentSemester))
                         .forEach(period => {
                             if (!acc[jamia.jamiaName]) {
                                 acc[jamia.jamiaName] = [];

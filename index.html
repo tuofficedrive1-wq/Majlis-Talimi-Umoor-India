@@ -235,6 +235,15 @@ body.embed-open #dashboard-view,body.embed-open #user-view{display:none!importan
 .embed-bar{height:44px;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 16px;background:#fff;border-bottom:1px solid var(--line);font-size:.86rem;color:var(--mut)}
 .embed-bar b{color:var(--tx);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .embed-bar a{color:var(--brand);font-weight:500;white-space:nowrap}
+#embed-loading{position:fixed;z-index:3;display:flex;align-items:center;justify-content:center;background:#f4f7f6;top:var(--tb-h);left:0;right:0;bottom:0}
+#embed-loading.hidden{display:none}
+#embed-loading .el-card{display:flex;flex-direction:column;align-items:center;gap:12px;width:min(280px,80vw)}
+#embed-loading .el-spin{width:34px;height:34px;border:4px solid #dfe8e5;border-top-color:#14b8a6;border-radius:50%;animation:elspin .9s linear infinite}
+#embed-loading .el-t{font-size:.9rem;font-weight:600;color:#1f2937}
+#embed-loading .el-bar{width:100%;height:6px;background:#dfe8e5;border-radius:99px;overflow:hidden;position:relative}
+#embed-loading .el-bar i{position:absolute;inset:0 auto 0 0;width:40%;background:#14b8a6;border-radius:99px;animation:elbar 1.1s ease-in-out infinite}
+@keyframes elspin{to{transform:rotate(360deg)}}
+@keyframes elbar{0%{left:-40%}100%{left:100%}}
 #embed-frame{display:block;width:100%;border:0;background:transparent;height:calc(100vh - var(--tb-h));height:calc(100dvh - var(--tb-h))}
 @media(max-width:1023.98px){#embed-frame{height:calc(100vh - var(--tb-h) - var(--bn-h) - env(safe-area-inset-bottom,0px));height:calc(100dvh - var(--tb-h) - var(--bn-h) - env(safe-area-inset-bottom,0px))}}
 
@@ -1058,6 +1067,7 @@ if('serviceWorker' in navigator){window.addEventListener('load',function(){navig
         
         <main id="embed-view" class="hidden">
             <iframe id="embed-frame" title="Embedded page" src="about:blank"></iframe>
+            <div id="embed-loading" class="hidden" aria-live="polite"><div class="el-card"><div class="el-spin"></div><div class="el-t" id="el-title">Khul raha hai…</div><div class="el-bar"><i></i></div></div></div>
         </main>
                 <main id="requests-view" class="hidden">
             <div class="req-wrap">
@@ -1312,7 +1322,13 @@ window.Shell=(function(){
   function openReq(){ closeEmbed(); reqV.classList.remove('hidden'); body.classList.add('req-open'); window.scrollTo(0,0); }
   const key=s=>s.v+':'+(s.tab||s.url)+(s.sub?'#'+s.sub:'');
 
-  function closeEmbed(){ if(!embedOpen())return; embV.classList.add('hidden'); body.classList.remove('embed-open'); frame.removeAttribute('data-url'); frame.removeAttribute('data-sub'); frame.dataset.ready=''; frame.style.position=frame.style.top=frame.style.left=frame.style.width=frame.style.height=''; navFrame('about:blank'); }
+  let elTimer=null;
+  function embLoading(on,title){ const ov=$('embed-loading'); if(!ov) return; clearTimeout(elTimer);
+    if(on){ const t=$('el-title'); if(t) t.textContent=(title||'Page')+' khul raha hai…'; ov.classList.remove('hidden'); elTimer=setTimeout(()=>embLoading(false),30000); }
+    else ov.classList.add('hidden'); }
+  frame.addEventListener('load',()=>{ let h='x'; try{ h=frame.contentWindow.location.href; }catch(_){} if(h==='about:blank') return; setTimeout(()=>embLoading(false),150); });
+  window.addEventListener('message',e=>{ if(e.data&&e.data.t==='mtu-boot'&&e.source===frame.contentWindow) embLoading(false); });
+  function closeEmbed(){ if(!embedOpen())return; embLoading(false); embV.classList.add('hidden'); body.classList.remove('embed-open'); frame.removeAttribute('data-url'); frame.removeAttribute('data-sub'); frame.dataset.ready=''; frame.style.position=frame.style.top=frame.style.left=frame.style.width=frame.style.height=''; navFrame('about:blank'); }
   /* frame ko topbar ke neeche se bottom bar ke upar tak exact fit karein (safe-area ho ya na ho) */
   function fitEmbed(){
     const tb=document.querySelector('.topbar'), bn=document.getElementById('bottom-nav');
@@ -1323,13 +1339,14 @@ window.Shell=(function(){
     const b=bnOn?Math.max(0,Math.round(window.innerHeight-bn.getBoundingClientRect().top)):0;
     const r=embV.getBoundingClientRect(), s=frame.style;
     s.position='fixed'; s.top=t+'px'; s.left=Math.round(r.left)+'px'; s.width=Math.round(r.width)+'px'; s.height=Math.max(120,window.innerHeight-t-b)+'px';
+    const ov=$('embed-loading'); if(ov){ ov.style.top=s.top; ov.style.left=s.left; ov.style.right='auto'; ov.style.bottom='auto'; ov.style.width=s.width; ov.style.height=s.height; }
   }
   function openEmbed(url,title,sub){
     closeReq();
     const same=embedOpen()&&frame.dataset.url===url&&frame.dataset.ready==='1';
     frame.dataset.url=url; frame.dataset.title=title||'Page'; frame.dataset.sub=sub||'';
     embV.classList.remove('hidden'); body.classList.add('embed-open'); fitEmbed(); setTimeout(fitEmbed,120); setTimeout(fitEmbed,700);
-    if(same) pushTab(); else { frame.dataset.ready=''; navFrame(url); }
+    if(same) pushTab(); else { frame.dataset.ready=''; embLoading(true,title); navFrame(url); }
     window.scrollTo(0,0);
   }
   /* replace() => iframe history me nayi entry nahi banti, isliye back ek hi click me kaam karta hai */
