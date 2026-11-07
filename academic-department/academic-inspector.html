@@ -463,7 +463,7 @@ html.embedded,html.embedded body{overflow-x:hidden;background:transparent!import
         import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-storage.js";
         
         // Aapke Custom JS Imports
-        import { renderPerformanceTab, handleDashboardMonthChange } from "./monthly-performance.js?v=20261031";
+        import { renderPerformanceTab, handleDashboardMonthChange } from "./monthly-performance.js?v=20261107";
         import { renderInspectionSummary } from "./inspection-summary.js";
         import { renderRecordingTab } from "./academic-recording.js";
         import { renderEnrollmentSummary } from "./academic-enrollment-summary.js";
@@ -515,7 +515,7 @@ window.listenToAdminReports = (selectedMonth) => {
 
         // AUTH CHECK
         onAuthStateChanged(auth, async user => {
-            if (!user) { if (window.self !== window.top) { showLoader(false); return; } window.location.href = "/Majlis-Talimi-Umoor-India/index.html"; return; }
+            if (!user) { if (window.self !== window.top) { window.__mtuLoader.end(); return; } window.location.href = "/Majlis-Talimi-Umoor-India/index.html"; return; }
             currentUser = user;
             await initDashboard();
             window.__mtuReady = true;
@@ -622,13 +622,13 @@ window.listenToAdminReports = (selectedMonth) => {
 
                 window.listenToAdminReports(monthInput.value);
                 // Stats background me load hon (loader block na kare); khatam hone par UI/charts khud update ho jate hain
-                KKP.set(60, 'Stats aur charts ka data mangwa rahe hain…');
+                KKP.set(60, 'Data mangwa rahe hain…');
                 __keepLoader = true;   // loader tab hatega jab stats aa jayein
-                loadStats().catch(e => console.error("loadStats error:", e)).finally(() => showLoader(false));
+                loadStats().catch(e => console.error("loadStats error:", e)).finally(() => window.__mtuLoader.end());
             } catch (err) {
                 console.error("Dashboard Initialization Error:", err);
             } finally {
-                if (!__keepLoader) showLoader(false); 
+                if (!__keepLoader) window.__mtuLoader.end(); 
             }
         }
 
@@ -648,9 +648,8 @@ window.listenToAdminReports = (selectedMonth) => {
             window.listenToAdminReports(e.target.value);
             
             if (typeof loadStats === "function") {
-                const __ms = ++window.__monthUiSeq;
-                showLoader(true, `${monthNames[parseInt(month)-1]} ${year} ka data load ho raha hai…`);
-                Promise.resolve(loadStats()).finally(() => { if (__ms === window.__monthUiSeq) showLoader(false); });
+                window.__mtuLoader.begin(`${monthNames[parseInt(month)-1]} ${year} ka data load ho raha hai…`);
+                Promise.resolve(loadStats()).finally(() => window.__mtuLoader.end());
             }
             
             const testTab = document.getElementById('tab-test');
@@ -719,7 +718,7 @@ window.listenToAdminReports = (selectedMonth) => {
                     where("inspectorId", "==", currentUser.uid)
                 )));
 
-                KKP.set(70, 'Inspection data mangwa rahe hain…');
+                KKP.set(70, 'Data mangwa rahe hain…');
                 const reportSnapP = getDoc(doc(db, "inspector_reports", reportId));
                 reportSnapP.catch(() => {});
 
@@ -1170,6 +1169,8 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
         })();
         const __loaderEl = document.getElementById('loader');
         let __loaderOn = !__loaderEl.classList.contains('hidden');
+        // Ek hi loader poore page ke liye: kai kaam saath chalein to sab khatam hone par hi hatega
+        let __busy = __loaderOn ? 1 : 0;
         if (__loaderOn) KKP.start('Page khul raha hai…');
         const showLoader = (s, label) => {
             if (s) {
@@ -1179,6 +1180,11 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
                 KKP.stop(); __loaderOn = false;
                 setTimeout(() => { if (!__loaderOn) __loaderEl.classList.add('hidden'); }, 180);
             }
+        };
+        window.__mtuLoader = {
+            begin: (label) => { __busy++; showLoader(true, label); },
+            set: (p, label) => KKP.set(p, label),
+            end: () => { __busy = Math.max(0, __busy - 1); if (__busy === 0) showLoader(false); }
         };
         
         const logoutAction = () => signOut(auth);

@@ -41,6 +41,19 @@ let gActiveSem2Months = [];
 // Loading feedback + stale-request guards (month jaldi jaldi badalne par purana load naya ko overwrite na kare)
 let gPerfSeq = 0, gSumSeq = 0, gStatusSeq = 0;
 const mtuLoadingHTML = (label, pct) => `<div class="mtu-ld flex flex-col items-center justify-center p-10 gap-3 bg-white rounded-2xl border border-slate-200"><div class="mtu-ld-l text-sm font-bold text-slate-600 text-center">${label}</div><div style="width:min(300px,80%);height:8px;background:#e2e8f0;border-radius:99px;overflow:hidden"><i class="mtu-ld-f" style="display:block;height:100%;width:${pct}%;background:#6366f1;border-radius:99px;transition:width .3s ease"></i></div><div class="mtu-ld-p text-xs font-black text-indigo-600">${pct}%</div></div>`;
+// Ek hi loader: inspector page ka overlay card (window.__mtuLoader). Alag se inline loader nahi dikhta.
+// Standalone chalne par (overlay na ho) purana inline card fallback ke taur par use hota hai.
+const mtuLd = (container, label) => {
+    const L = window.__mtuLoader;
+    if (L) {
+        L.begin(label);
+        if (container) container.innerHTML = '';
+        let done = false;
+        return { set: (p, l) => L.set(p, l), end: () => { if (!done) { done = true; L.end(); } } };
+    }
+    if (container) container.innerHTML = mtuLoadingHTML(label, 5);
+    return { set: (p, l) => mtuLoadingSet(container, p, l), end: () => {} };
+};
 const mtuLoadingSet = (container, pct, label) => {
     if (!container) return;
     const f = container.querySelector('.mtu-ld-f'); if (!f) return;
@@ -708,7 +721,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
     // NAYA: Data aane tak Loader show karein taake UI freeze na ho
     const mySeq = ++gPerfSeq;
-    container.innerHTML = mtuLoadingHTML('Performance data load ho raha hai…', 5);
+    const ld = mtuLd(container, 'Data load ho raha hai…');
 
     try {
        const [calSnap, userSnap] = await Promise.all([
@@ -716,7 +729,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
             getDoc(doc(db, "users", currentUser.uid))
         ]);
         if (mySeq !== gPerfSeq) return;
-        mtuLoadingSet(container, 30, 'Targets aur performance data mangwa rahe hain…');
+        ld.set(30, 'Data mangwa rahe hain…');
         
         // monthlyTargets yahan se hata diya gaya hai, ab yeh niche loop me har Jamia ke liye alag fetch hoga
         
@@ -763,7 +776,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
             Promise.all(targetPromises)
         ]);
         if (mySeq !== gPerfSeq) return;   // beech me naya month select ho gaya
-        mtuLoadingSet(container, 85, 'Table ban rahi hai…');
+        ld.set(85, 'Table ban rahi hai…');
 
         let html = "";
 
@@ -937,6 +950,8 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     } catch (e) {
         console.error("Load Error:", e);
         container.innerHTML = `<div class="p-5 text-center text-red-500 font-bold">Error loading data.</div>`;
+    } finally {
+        ld.end();
     }
 };
 
@@ -1857,11 +1872,11 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
     const mySeq = ++gSumSeq;
     const __ldC = targetTabId === 'munasib-tab' ? document.getElementById('monthly-munasib-container')
                 : targetTabId === 'profile-tab' ? document.getElementById('teacher-profile-container') : null;
-    if (__ldC) __ldC.innerHTML = mtuLoadingHTML('Summary data load ho raha hai…', 5);
+    const ldS = mtuLd(__ldC, 'Data load ho raha hai…');
     try {
         await getAcademicConfig(db); // Database Calendar Sync
         if (mySeq !== gSumSeq) return;
-        mtuLoadingSet(__ldC, 15, 'Calendar aur profile…');
+        ldS.set(15, 'Calendar aur profile…');
         
         if (gAllYearReportsData.length === 0 || !gSummaryActiveYear) {
             const [calSnap, userSnap] = await Promise.all([
@@ -1883,7 +1898,7 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
             });
             // Loop me rukne ke bajaye sabko ek sath fetch karein
             const __targetsDone = Promise.all(jamiaTargetPromises);   // publicData ke saath parallel chalega
-            mtuLoadingSet(__ldC, 35, 'Targets aur performance data mangwa rahe hain…');
+            ldS.set(35, 'Data mangwa rahe hain…');
 
         const monthSelectElem = document.getElementById('summary-month-select');
         const monthIdx = parseInt(monthSelectElem?.value || monthNames.indexOf(currentSelectedMonth));
@@ -1922,7 +1937,7 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
         await Promise.all(publicDataPromises);
         await __targetsDone;
         if (mySeq !== gSumSeq) return;   // naya month/tab aa gaya
-        mtuLoadingSet(__ldC, 85, 'Table ban rahi hai…');
+        ldS.set(85, 'Table ban rahi hai…');
 
        const getTargetValue = (period, monthKey, jamiaName) => {
             let target = 0;
@@ -2343,6 +2358,7 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
         console.error("Summary Render Error:", err);
         if (__ldC && mySeq === gSumSeq) __ldC.innerHTML = '<div class="p-5 text-center text-red-500 font-bold text-sm">Data load nahi ho saka. Dobara try karein.</div>';
     } finally {
+        ldS.end();
         // koi raasta loader ko hataye baghair nikal jaye to loader atka na rahe
         if (__ldC && mySeq === gSumSeq && __ldC.querySelector('.mtu-ld')) __ldC.innerHTML = '';
     }
@@ -2456,14 +2472,14 @@ const loadSubmitStatus = async (jamiaat, db, currentUser) => {
     const container = document.getElementById('submit-status-container');
     if (!container) return;
     const mySeq = ++gStatusSeq;
-    container.innerHTML = mtuLoadingHTML('Submit status load ho raha hai…', 5);
+    const ld = mtuLd(container, 'Data load ho raha hai…');
     try {
         const [calSnap, userSnap] = await Promise.all([
             getDoc(doc(db, "settings", "academic_calendar")),
             getDoc(doc(db, "users", currentUser.uid))
         ]);
         if (mySeq !== gStatusSeq) return;
-        mtuLoadingSet(container, 30, 'Reports aur submissions mangwa rahe hain…');
+        ld.set(30, 'Reports aur submissions mangwa rahe hain…');
         const activeYear = calSnap.exists() ? (calSnap.data().activeYear || "2026-2027") : "2026-2027";
         const userData = userSnap.data() || {};
         const structure = (userData.academicYears || {})[activeYear]?.karkardagiStructure || [];
@@ -2497,7 +2513,7 @@ const loadSubmitStatus = async (jamiaat, db, currentUser) => {
         // Teachers ki submissions
         const subSnap = await subSnapP;
         if (mySeq !== gStatusSeq) return;
-        mtuLoadingSet(container, 85, 'Table ban rahi hai…');
+        ld.set(85, 'Table ban rahi hai…');
 
         const findJamia = (teacherId, jamiaRaw) => {
             let j = null;
@@ -2562,6 +2578,8 @@ const loadSubmitStatus = async (jamiaat, db, currentUser) => {
             ? 'Is data ko dekhne ki permission nahi hai (Firestore rules: teacher_submissions).'
             : 'Data load nahi ho saka. Dobara koshish karein.';
         container.innerHTML = `<div class="p-6 bg-white rounded-2xl border border-red-100 text-center text-red-600 font-semibold text-sm">${msg}</div>`;
+    } finally {
+        ld.end();
     }
 };
 
