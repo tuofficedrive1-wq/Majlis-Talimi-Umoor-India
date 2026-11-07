@@ -8,7 +8,7 @@
     <script defer src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script defer src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
     <script defer src="../mtu-chart.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script defer src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     
@@ -53,9 +53,24 @@ html.embedded,html.embedded body{overflow-x:hidden;background:transparent!import
 </head>
 <body data-panel="admin" class="antialiased text-slate-800">
 
-    <div id="loader" class="fixed inset-0 bg-slate-900/40 flex justify-center items-center z-[100] hidden backdrop-blur-sm">
-        <div class="loader"></div>
+    <style>
+    .kk-loader{position:fixed;inset:0;z-index:100;display:flex;align-items:center;justify-content:center;background:rgba(241,245,249,.85)}
+    .kk-loader.hidden{display:none!important}
+    .kk-card{background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:18px 20px;width:min(340px,88vw);box-shadow:0 10px 30px rgba(0,0,0,.12)}
+    .kk-row{display:flex;align-items:center;gap:14px;margin-bottom:12px}
+    .kk-row .loader{flex:none}
+    #kk-label{font-size:.9rem;font-weight:700;color:#1e293b;line-height:1.35}
+    #kk-pct{font-size:.8rem;color:#4f46e5;font-weight:800;margin-top:2px}
+    .kk-bar{height:8px;background:#e2e8f0;border-radius:99px;overflow:hidden}
+    .kk-bar i{display:block;height:100%;width:3%;background:#4f46e5;border-radius:99px;transition:width .35s ease}
+    </style>
+    <div id="loader" class="kk-loader">
+        <div class="kk-card">
+            <div class="kk-row"><div class="loader"></div><div><div id="kk-label">Page khul raha hai…</div><div id="kk-pct">0%</div></div></div>
+            <div class="kk-bar"><i id="kk-fill"></i></div>
+        </div>
     </div>
+    <script>try{if(window.parent!==window)window.parent.postMessage({t:'mtu-boot'},'*')}catch(_){}</script>
    
     <div id="sidebar-overlay" class="fixed inset-0 bg-slate-900/50 z-[100] hidden backdrop-blur-sm transition-opacity duration-300 opacity-0"></div>
     
@@ -474,6 +489,7 @@ html.embedded,html.embedded body{overflow-x:hidden;background:transparent!import
         let reportsData = null;
         window.currentUserData = null;
         window.testSheetsCache = {};
+        window.__monthUiSeq = 0; window.__statsSeq = 0;
         
 window.allReports = [];
 let adminReportUnsubscribe = null; 
@@ -499,7 +515,7 @@ window.listenToAdminReports = (selectedMonth) => {
 
         // AUTH CHECK
         onAuthStateChanged(auth, async user => {
-            if (!user) { if (window.self !== window.top) return; window.location.href = "/Majlis-Talimi-Umoor-India/index.html"; return; }
+            if (!user) { if (window.self !== window.top) { showLoader(false); return; } window.location.href = "/Majlis-Talimi-Umoor-India/index.html"; return; }
             currentUser = user;
             await initDashboard();
             window.__mtuReady = true;
@@ -515,6 +531,7 @@ window.listenToAdminReports = (selectedMonth) => {
 
         // INIT DASHBOARD
         async function initDashboard() {
+            let __keepLoader = false;
             try {
                 showLoader(true);
                 const monthInput = document.getElementById('report-month');
@@ -522,8 +539,16 @@ window.listenToAdminReports = (selectedMonth) => {
                 const currentMonthValue = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
                 
                 if(!monthInput.value) {
-                    monthInput.value = currentMonthValue;
+                    let initMonth = currentMonthValue;
+                    try {   // dashboard ka month pehle se maloom hai: usi se shuru karein (dobara reload na ho)
+                        if (document.documentElement.classList.contains('embedded') && window.top.Shell) {
+                            const sm = window.top.Shell.month();
+                            if (/^\d{4}-\d{2}$/.test(sm || '')) initMonth = sm;
+                        }
+                    } catch (_) {}
+                    monthInput.value = initMonth;
                 }
+                KKP.set(15, 'Login check ho gaya…');
 
                 const monthNames = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
                 const [year, month] = monthInput.value.split('-');
@@ -534,21 +559,41 @@ window.listenToAdminReports = (selectedMonth) => {
 
                 // Master Jamiaat Directory se official names map karne ke liye cache banate hain
                 window.masterJamiaMap = new Map();
-                try {
-                    const mSnap = await getDocs(collection(db, "jamiaat_master"));
-                    mSnap.forEach(d => {
-                        const mData = d.data();
-                        const mName = (mData.name || mData.jamiaName || '').trim();
-                        if (mName && mName !== 'undefined') {
-                            const rec = { id: d.id, name: mName, region: mData.region || '', state: mData.state || '' };
-                            window.masterJamiaMap.set(d.id, rec);
-                            const nameKey = mName.trim().toLowerCase();
-                            if (!window.masterJamiaMap.has(nameKey)) window.masterJamiaMap.set(nameKey, rec);
+                const addMasterRec = (rec) => {
+                    window.masterJamiaMap.set(rec.id, rec);
+                    const nameKey = rec.name.trim().toLowerCase();
+                    if (!window.masterJamiaMap.has(nameKey)) window.masterJamiaMap.set(nameKey, rec);
+                };
+                // Master directory: sessionStorage cache (10 min) taake har baar poori collection download na ho
+                const loadMaster = async () => {
+                    try {
+                        const cached = JSON.parse(sessionStorage.getItem('mtuMasterJamia') || 'null');
+                        if (cached && Array.isArray(cached.list) && (Date.now() - cached.t) < 600000) {
+                            cached.list.forEach(addMasterRec);
+                            return;
                         }
-                    });
-                } catch(e) { console.warn("Master jamia cache warning:", e); }
+                    } catch (e) {}
+                    try {
+                        const mSnap = await getDocs(collection(db, "jamiaat_master"));
+                        const list = [];
+                        mSnap.forEach(d => {
+                            const mData = d.data();
+                            const mName = (mData.name || mData.jamiaName || '').trim();
+                            if (mName && mName !== 'undefined') {
+                                list.push({ id: d.id, name: mName, region: mData.region || '', state: mData.state || '' });
+                            }
+                        });
+                        list.forEach(addMasterRec);
+                        try { sessionStorage.setItem('mtuMasterJamia', JSON.stringify({ t: Date.now(), list })); } catch (e) {}
+                    } catch(e) { console.warn("Master jamia cache warning:", e); }
+                };
 
-                const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+                // Master aur user doc ek saath (parallel) fetch karein
+                const [, userDoc] = await Promise.all([
+                    loadMaster(),
+                    getDoc(doc(db, "users", currentUser.uid))
+                ]);
+                KKP.set(45, 'Profile aur jamiaat list mil gayi…');
                 if (userDoc.exists()) {
                     const userData = userDoc.data();
                     window.currentUserData = userData; 
@@ -576,11 +621,14 @@ window.listenToAdminReports = (selectedMonth) => {
                 handleDashboardMonthChange(currentShortMonth, assignedJamiaat, db, currentUser);
 
                 window.listenToAdminReports(monthInput.value);
-                await loadStats(); 
+                // Stats background me load hon (loader block na kare); khatam hone par UI/charts khud update ho jate hain
+                KKP.set(60, 'Stats aur charts ka data mangwa rahe hain…');
+                __keepLoader = true;   // loader tab hatega jab stats aa jayein
+                loadStats().catch(e => console.error("loadStats error:", e)).finally(() => showLoader(false));
             } catch (err) {
                 console.error("Dashboard Initialization Error:", err);
             } finally {
-                showLoader(false); 
+                if (!__keepLoader) showLoader(false); 
             }
         }
 
@@ -599,7 +647,11 @@ window.listenToAdminReports = (selectedMonth) => {
             
             window.listenToAdminReports(e.target.value);
             
-            if (typeof loadStats === "function") loadStats();
+            if (typeof loadStats === "function") {
+                const __ms = ++window.__monthUiSeq;
+                showLoader(true, `${monthNames[parseInt(month)-1]} ${year} ka data load ho raha hai…`);
+                Promise.resolve(loadStats()).finally(() => { if (__ms === window.__monthUiSeq) showLoader(false); });
+            }
             
             const testTab = document.getElementById('tab-test');
             if (testTab && !testTab.classList.contains('hidden')) {
@@ -656,11 +708,22 @@ window.listenToAdminReports = (selectedMonth) => {
                 
                 const month = monthInput.value; 
                 const reportId = `${currentUser.uid}_${month}`;
+                const mySeq = ++window.__statsSeq;
                 
-                const reportSnap = await getDoc(doc(db, "inspector_reports", reportId));
-                reportsData = reportSnap.exists() ? reportSnap.data() : { jaiza: [], recordings: [], tests: [], enroll: [] };
+                // Test sheets ka fetch shuru se hi parallel chalayen
+                const sheetsPromise = getMonthlyTestSheets(month);
+                // Inspector ki saari inspections ek hi baar query hon (har jamia ke liye alag nahi)
+                let legPromise = null;
+                const getLegSnap = () => legPromise || (legPromise = getDocs(query(
+                    collection(db, "academic_inspections"),
+                    where("inspectorId", "==", currentUser.uid)
+                )));
 
-                const detailResults = await Promise.all(
+                KKP.set(70, 'Inspection data mangwa rahe hain…');
+                const reportSnapP = getDoc(doc(db, "inspector_reports", reportId));
+                reportSnapP.catch(() => {});
+
+                const detailResultsP = Promise.all(
                     assignedJamiaat.map(async jamia => {
                         const identity = assignedJamiaIdentity.get(jamia) || {};
                         const jId = identity.id || '';
@@ -678,11 +741,7 @@ window.listenToAdminReports = (selectedMonth) => {
                         // Query lookup: inspectorId match
                         if (!detailSnap.exists()) {
                             try {
-                                const qLeg = query(
-                                    collection(db, "academic_inspections"),
-                                    where("inspectorId", "==", currentUser.uid)
-                                );
-                                const legSnap = await getDocs(qLeg);
+                                const legSnap = await getLegSnap();
                                 const cleanJamia = String(jamia).trim().toLowerCase();
                                 const foundDoc = legSnap.docs.find(d => {
                                     const dData = d.data();
@@ -699,6 +758,13 @@ window.listenToAdminReports = (selectedMonth) => {
                         return { jamia, detailSnap, jId };
                     })
                 );
+
+                // Report doc aur har jamia ki inspection ab ek saath aati hain
+                const reportSnap = await reportSnapP;
+                const detailResults = await detailResultsP;
+                if (mySeq !== window.__statsSeq) return;   // naya month aa gaya, purana result na lagayein
+                reportsData = reportSnap.exists() ? reportSnap.data() : { jaiza: [], recordings: [], tests: [], enroll: [] };
+                KKP.set(85, 'Charts ban rahe hain…');
 
                 const normHelper = s => String(s || '').trim().toLowerCase().replace(/[^a-z0-9]/g, '');
 
@@ -729,9 +795,10 @@ window.listenToAdminReports = (selectedMonth) => {
                     }
                 });
 
-                const allSheets = await getMonthlyTestSheets(month);
+                const allSheets = await sheetsPromise;
+                if (mySeq !== window.__statsSeq) return;
 
-                reportsData.tests = []; 
+                reportsData.tests = [];
                 let completedTestCount = 0; 
 
                 for (let jamia of assignedJamiaat) {
@@ -1088,7 +1155,31 @@ document.getElementById('save-jaiza-btn').onclick = async () => {
             closeSidebar();
         };
 
-        const showLoader = (s) => document.getElementById('loader').classList.toggle('hidden', !s);
+        const KKP = (() => {
+            let pct = 0, timer = null, t0 = 0;
+            const L = document.getElementById('kk-label'), P = document.getElementById('kk-pct'), F = document.getElementById('kk-fill');
+            const paint = () => { F.style.width = pct + '%'; P.textContent = Math.round(pct) + '%'; };
+            const set = (p, label) => { if (p > pct) pct = Math.min(p, 99); if (label) L.textContent = label; paint(); };
+            const start = (label) => {
+                pct = 3; L.textContent = label || 'Load ho raha hai…'; paint();
+                clearInterval(timer); t0 = Date.now();
+                timer = setInterval(() => { pct += (92 - pct) * 0.06; paint(); if (Date.now() - t0 > 40000) L.textContent = 'Load hone me der lag rahi hai — internet check karein'; }, 200);
+            };
+            const stop = () => { clearInterval(timer); timer = null; pct = 100; paint(); };
+            return { start, set, stop };
+        })();
+        const __loaderEl = document.getElementById('loader');
+        let __loaderOn = !__loaderEl.classList.contains('hidden');
+        if (__loaderOn) KKP.start('Page khul raha hai…');
+        const showLoader = (s, label) => {
+            if (s) {
+                if (!__loaderOn) KKP.start(label); else if (label) KKP.set(0, label);
+                __loaderOn = true; __loaderEl.classList.remove('hidden');
+            } else if (__loaderOn) {
+                KKP.stop(); __loaderOn = false;
+                setTimeout(() => { if (!__loaderOn) __loaderEl.classList.add('hidden'); }, 180);
+            }
+        };
         
         const logoutAction = () => signOut(auth);
         document.getElementById('desktop-logout-btn').onclick = logoutAction;

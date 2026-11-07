@@ -10,6 +10,18 @@ import {
     getDocs
 } from "https://www.gstatic.com/firebasejs/11.0.2/firebase-firestore.js";
 
+// academic_performance ka doc ID jamia ke naam se.
+// Pehle sirf naam ka number liya jata tha, aur number na ho to "001" — jis se
+// JABALPUR aur JABALPUR BYPASS (dono bina number ke) ka data ek hi doc me mix hota tha.
+// Ab number wale naam purane IDs hi rakhte hain (data safe), bina number wale naam ka apna ID banta hai.
+export const perfDocIdForJamia = (jamiaName) => {
+    const name = String(jamiaName || '').trim();
+    const match = name.match(/\d+/);
+    if (match) return match[0];
+    const slug = name.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+    return slug ? `j_${slug}` : '001';
+};
+
 let academicConfig = null;
 let gDb = null;
 let gCurrentUser = null;
@@ -25,6 +37,17 @@ let gSummaryKarkardagiStructure = [];
 // NAYE GLOBAL VARIABLES: Dynamic Semester Months ke liye yahan add kiye gaye hain
 let gActiveSem1Months = [];
 let gActiveSem2Months = [];
+
+// Loading feedback + stale-request guards (month jaldi jaldi badalne par purana load naya ko overwrite na kare)
+let gPerfSeq = 0, gSumSeq = 0, gStatusSeq = 0;
+const mtuLoadingHTML = (label, pct) => `<div class="mtu-ld flex flex-col items-center justify-center p-10 gap-3 bg-white rounded-2xl border border-slate-200"><div class="mtu-ld-l text-sm font-bold text-slate-600 text-center">${label}</div><div style="width:min(300px,80%);height:8px;background:#e2e8f0;border-radius:99px;overflow:hidden"><i class="mtu-ld-f" style="display:block;height:100%;width:${pct}%;background:#6366f1;border-radius:99px;transition:width .3s ease"></i></div><div class="mtu-ld-p text-xs font-black text-indigo-600">${pct}%</div></div>`;
+const mtuLoadingSet = (container, pct, label) => {
+    if (!container) return;
+    const f = container.querySelector('.mtu-ld-f'); if (!f) return;
+    f.style.width = pct + '%';
+    const pe = container.querySelector('.mtu-ld-p'); if (pe) pe.textContent = pct + '%';
+    if (label) { const l = container.querySelector('.mtu-ld-l'); if (l) l.textContent = label; }
+};
 
 // Current month default set rahega
 let currentSelectedMonth = monthNames[new Date().getMonth()]; 
@@ -684,17 +707,16 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
     if (!container) return; 
 
     // NAYA: Data aane tak Loader show karein taake UI freeze na ho
-    container.innerHTML = `
-        <div class="flex flex-col items-center justify-center p-12 space-y-4">
-            <i class="fas fa-circle-notch fa-spin text-4xl text-indigo-500"></i>
-            <p class="font-bold text-slate-500 text-sm">Performance Data Load Ho Raha Hai...</p>
-        </div>`;
+    const mySeq = ++gPerfSeq;
+    container.innerHTML = mtuLoadingHTML('Performance data load ho raha hai…', 5);
 
     try {
        const [calSnap, userSnap] = await Promise.all([
             getDoc(doc(db, "settings", "academic_calendar")),
             getDoc(doc(db, "users", currentUser.uid))
         ]);
+        if (mySeq !== gPerfSeq) return;
+        mtuLoadingSet(container, 30, 'Targets aur performance data mangwa rahe hain…');
         
         // monthlyTargets yahan se hata diya gaya hai, ab yeh niche loop me har Jamia ke liye alag fetch hoga
         
@@ -717,8 +739,7 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
 
         // NAYA: Sab Jamiaat ka Public data ek hi baar fetch karein (Speed Optimized + Archive Fallback)
         const publicDataPromises = filteredJamiaat.map(async jamiaName => {
-            const match = jamiaName.match(/\d+/);
-            const jamiaDocId = match ? match[0] : "001";
+            const jamiaDocId = perfDocIdForJamia(jamiaName);
             const snap = await getDoc(doc(db, "academic_performance", jamiaDocId));
             let data = snap.exists() ? snap.data() : {};
             if (!data[targetMonthKey]) {
@@ -741,6 +762,8 @@ const loadPerformanceTable = async (jamiaat, db, currentUser) => {
             Promise.all(publicDataPromises),
             Promise.all(targetPromises)
         ]);
+        if (mySeq !== gPerfSeq) return;   // beech me naya month select ho gaya
+        mtuLoadingSet(container, 85, 'Table ban rahi hai…');
 
         let html = "";
 
@@ -1405,8 +1428,7 @@ window.toggleEditMode = async (jamiaName) => {
             let jamiaData = structure.find(j => j.jamiaName === jamiaName);
 
             if (jamiaData) {
-                const match = jamiaName.match(/\d+/);
-                const jamiaDocId = match ? match[0] : "001";
+                const jamiaDocId = perfDocIdForJamia(jamiaName);
                 const perfDocRef = doc(databaseInstance, "academic_performance", jamiaDocId);
                 const perfSnap = await getDoc(perfDocRef);
                 let currentPerfData = perfSnap.exists() ? perfSnap.data() : {};
@@ -1690,8 +1712,7 @@ window.resetTeacherMonthReport = async (jamiaName, teacherId, teacherName) => {
         await updateDoc(userRef, { academicYears: academicYears });
 
         // FIX 3: Teacher ka submit kiya hua public data delete karein (Taaki form unlock ho jaye)
-        const match = jamiaName.match(/\d+/);
-        const jamiaDocId = match ? match[0] : "001";
+        const jamiaDocId = perfDocIdForJamia(jamiaName);
         const perfDocRef = doc(databaseInstance, "academic_performance", jamiaDocId);
         const perfSnap = await getDoc(perfDocRef);
 
@@ -1833,14 +1854,22 @@ const calculateCumulativeTaught = (periodId, semester, currentMonthNum, currentY
 };
 
 const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJamiaat) => {
+    const mySeq = ++gSumSeq;
+    const __ldC = targetTabId === 'munasib-tab' ? document.getElementById('monthly-munasib-container')
+                : targetTabId === 'profile-tab' ? document.getElementById('teacher-profile-container') : null;
+    if (__ldC) __ldC.innerHTML = mtuLoadingHTML('Summary data load ho raha hai…', 5);
     try {
         await getAcademicConfig(db); // Database Calendar Sync
+        if (mySeq !== gSumSeq) return;
+        mtuLoadingSet(__ldC, 15, 'Calendar aur profile…');
         
         if (gAllYearReportsData.length === 0 || !gSummaryActiveYear) {
-            const calSnap = await getDoc(doc(db, "settings", "academic_calendar"));
+            const [calSnap, userSnap] = await Promise.all([
+                getDoc(doc(db, "settings", "academic_calendar")),
+                getDoc(doc(db, "users", currentUser.uid))
+            ]);
             gSummaryActiveYear = calSnap.exists() ? (calSnap.data().activeYear || "2026-2027") : "2026-2027";
             
-            const userSnap = await getDoc(doc(db, "users", currentUser.uid));
             if (userSnap.exists()) {
                 const academicYears = userSnap.data().academicYears || {};
                 gSummaryKarkardagiStructure = academicYears[gSummaryActiveYear]?.karkardagiStructure || [];
@@ -1853,7 +1882,8 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
                 jamiaTargetsMap[jName] = await fetchTargetsForJamia(db, jName);
             });
             // Loop me rukne ke bajaye sabko ek sath fetch karein
-            await Promise.all(jamiaTargetPromises);
+            const __targetsDone = Promise.all(jamiaTargetPromises);   // publicData ke saath parallel chalega
+            mtuLoadingSet(__ldC, 35, 'Targets aur performance data mangwa rahe hain…');
 
         const monthSelectElem = document.getElementById('summary-month-select');
         const monthIdx = parseInt(monthSelectElem?.value || monthNames.indexOf(currentSelectedMonth));
@@ -1870,11 +1900,10 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
 
         const publicDataMap = {};
         const publicDataPromises = assignedJamiaat.map(async (jamiaName) => {
-            const match = jamiaName.match(/\d+/);
-            const jamiaDocId = match ? match[0] : "001";
+            const jamiaDocId = perfDocIdForJamia(jamiaName);
             const snap = await getDoc(doc(db, "academic_performance", jamiaDocId));
             let data = snap.exists() ? snap.data() : {};
-            
+
             // If historical months are needed, merge archive data
             const hasArchMonths = semMonths.some(m => ['apr', 'may', 'jun', 'jul'].includes(m));
             if (hasArchMonths) {
@@ -1891,6 +1920,9 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
             publicDataMap[jamiaName] = data;
         });
         await Promise.all(publicDataPromises);
+        await __targetsDone;
+        if (mySeq !== gSumSeq) return;   // naya month/tab aa gaya
+        mtuLoadingSet(__ldC, 85, 'Table ban rahi hai…');
 
        const getTargetValue = (period, monthKey, jamiaName) => {
             let target = 0;
@@ -2309,10 +2341,26 @@ const loadAndRenderSummaryTabs = async (targetTabId, db, currentUser, assignedJa
 
     } catch (err) { // <-- 2. Ye bracket 'try' block ko close kar raha hai (Ye aapke code me miss ho gaya tha)
         console.error("Summary Render Error:", err);
+        if (__ldC && mySeq === gSumSeq) __ldC.innerHTML = '<div class="p-5 text-center text-red-500 font-bold text-sm">Data load nahi ho saka. Dobara try karein.</div>';
+    } finally {
+        // koi raasta loader ko hataye baghair nikal jaye to loader atka na rahe
+        if (__ldC && mySeq === gSumSeq && __ldC.querySelector('.mtu-ld')) __ldC.innerHTML = '';
     }
 };
 
-async function fetchTargetsForJamia(db, jamiaName) {
+// Targets admin set karta hai aur month par depend nahi karte: 10 min cache (month badalne par dobara na mangwane padein)
+const __targetsCache = new Map();
+function fetchTargetsForJamia(db, jamiaName) {
+    const key = String(jamiaName || '').trim().toUpperCase();
+    const hit = __targetsCache.get(key);
+    if (hit && (Date.now() - hit.t) < 600000) return hit.p;
+    const p = fetchTargetsForJamiaRaw(db, jamiaName);
+    __targetsCache.set(key, { t: Date.now(), p });
+    p.catch(() => __targetsCache.delete(key));
+    return p;
+}
+
+async function fetchTargetsForJamiaRaw(db, jamiaName) {
     const cleanName = jamiaName.trim().toUpperCase().replace(/\s+/g, '_');
     
     // Base object jisme hum sab merge karenge
@@ -2338,8 +2386,15 @@ async function fetchTargetsForJamia(db, jamiaName) {
         }
     };
 
-    // 1. Sabse pehle Global (Default) target layein
-    let globalSnap = await getDoc(doc(db, "page_targets", "global_targets"));
+    // Global, Master aur Jamia-specific docs ek saath mangwa lein (pehle ek ke baad ek aate the)
+    const masterQuery = query(collection(db, "jamiaat_master"), where("jamiaName", "==", jamiaName.trim().toUpperCase()));
+    const [globalSnap, masterDocs, jamiaSnap] = await Promise.all([
+        getDoc(doc(db, "page_targets", "global_targets")),
+        getDocs(masterQuery),
+        getDoc(doc(db, "page_targets", `jamia_${cleanName}_targets`))
+    ]);
+
+    // 1. Global (Default) target
     if (globalSnap.exists()) {
         mergeIntoBase(globalSnap.data().targets || {});
     } else {
@@ -2350,34 +2405,19 @@ async function fetchTargetsForJamia(db, jamiaName) {
         }
     }
 
-    // 2. Jamia ka Region aur State pata karein
-    const masterQuery = query(collection(db, "jamiaat_master"), where("jamiaName", "==", jamiaName.trim().toUpperCase()));
-    const masterDocs = await getDocs(masterQuery);
-    
+    // 2. State aur Region (dono ek saath), merge order: State phir Region
     if (!masterDocs.empty) {
         const masterData = masterDocs.docs[0].data();
-        
-        // 3. State specific target check karein
-        if (masterData.state) {
-            const cleanState = masterData.state.trim().toUpperCase().replace(/\s+/g, '_');
-            let stateSnap = await getDoc(doc(db, "page_targets", `state_${cleanState}_targets`));
-            if (stateSnap.exists()) {
-                mergeIntoBase(stateSnap.data().targets || {});
-            }
-        }
-        
-        // 4. Region specific target check karein
-        if (masterData.region) {
-            const cleanRegion = masterData.region.trim().toUpperCase().replace(/\s+/g, '_');
-            let regionSnap = await getDoc(doc(db, "page_targets", `region_${cleanRegion}_targets`));
-            if (regionSnap.exists()) {
-                mergeIntoBase(regionSnap.data().targets || {});
-            }
-        }
+        const stateP = masterData.state
+            ? getDoc(doc(db, "page_targets", `state_${masterData.state.trim().toUpperCase().replace(/\s+/g, '_')}_targets`)) : Promise.resolve(null);
+        const regionP = masterData.region
+            ? getDoc(doc(db, "page_targets", `region_${masterData.region.trim().toUpperCase().replace(/\s+/g, '_')}_targets`)) : Promise.resolve(null);
+        const [stateSnap, regionSnap] = await Promise.all([stateP, regionP]);
+        if (stateSnap && stateSnap.exists()) mergeIntoBase(stateSnap.data().targets || {});
+        if (regionSnap && regionSnap.exists()) mergeIntoBase(regionSnap.data().targets || {});
     }
 
-    // 5. Aakhir me Jamia specific target check karein
-    let jamiaSnap = await getDoc(doc(db, "page_targets", `jamia_${cleanName}_targets`));
+    // 3. Aakhir me Jamia specific target
     if (jamiaSnap.exists()) {
         mergeIntoBase(jamiaSnap.data().targets || {});
     }
@@ -2415,16 +2455,15 @@ const statusSameJamia = (a, b) => {
 const loadSubmitStatus = async (jamiaat, db, currentUser) => {
     const container = document.getElementById('submit-status-container');
     if (!container) return;
-    container.innerHTML = `
-        <div class="p-8 bg-white rounded-2xl border text-center text-gray-500 font-medium">
-            <i class="fas fa-circle-notch fa-spin text-3xl text-indigo-500 mb-2"></i>
-            <p>Data load ho raha hai...</p>
-        </div>`;
+    const mySeq = ++gStatusSeq;
+    container.innerHTML = mtuLoadingHTML('Submit status load ho raha hai…', 5);
     try {
         const [calSnap, userSnap] = await Promise.all([
             getDoc(doc(db, "settings", "academic_calendar")),
             getDoc(doc(db, "users", currentUser.uid))
         ]);
+        if (mySeq !== gStatusSeq) return;
+        mtuLoadingSet(container, 30, 'Reports aur submissions mangwa rahe hain…');
         const activeYear = calSnap.exists() ? (calSnap.data().activeYear || "2026-2027") : "2026-2027";
         const userData = userSnap.data() || {};
         const structure = (userData.academicYears || {})[activeYear]?.karkardagiStructure || [];
@@ -2437,6 +2476,10 @@ const loadSubmitStatus = async (jamiaat, db, currentUser) => {
         const monthNum = monthNames.indexOf(monthKey);               // 0-11 (JS month index)
         const years = activeYear.split('-').map(n => parseInt(n, 10));
         const yearNum = monthNum <= 2 ? (years[1] || (years[0] + 1)) : years[0];   // Jan-Mar agle saal ke hote hain
+
+        // Teachers ki submissions ko reports ke saath parallel mangwayen
+        const subSnapP = getDocs(query(collection(db, 'teacher_submissions'), where('submissionYear', '==', yearNum), where('submissionMonth', '==', monthNum)));
+        subSnapP.catch(() => {});
 
         // Admin ne jo report save ki (fallback)
         let savedEntries = [], savedTime = null;
@@ -2452,7 +2495,9 @@ const loadSubmitStatus = async (jamiaat, db, currentUser) => {
         } catch (e) { console.warn('monthly_reports read failed', e); }
 
         // Teachers ki submissions
-        const subSnap = await getDocs(query(collection(db, 'teacher_submissions'), where('submissionYear', '==', yearNum), where('submissionMonth', '==', monthNum)));
+        const subSnap = await subSnapP;
+        if (mySeq !== gStatusSeq) return;
+        mtuLoadingSet(container, 85, 'Table ban rahi hai…');
 
         const findJamia = (teacherId, jamiaRaw) => {
             let j = null;
